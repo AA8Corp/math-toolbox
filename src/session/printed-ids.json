@@ -1,0 +1,6 @@
+{
+  "_comment": "Frozen tool IDs and preset keys that have been printed in a physical workbook. See architecture doc §7.4.1. CI asserts that nothing in this list can be removed or renamed without failing the build. Empty until the first printed edition ships.",
+  "printedEditions": [],
+  "toolIds": [],
+  "presetKeys": []
+}
