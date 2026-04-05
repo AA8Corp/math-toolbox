@@ -4,7 +4,13 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
+//
+// `base` is configurable via the VITE_BASE environment variable so that
+// GitHub Pages (which serves this project at /math-toolbox/) and a
+// future custom domain (which serves from /) can share one config.
+// `npm run dev` keeps `/` automatically.
 export default defineConfig({
+  base: process.env.VITE_BASE ?? '/',
   plugins: [
     react(),
     tailwindcss(),

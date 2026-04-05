@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Allow manual runs from the Actions tab.
+  workflow_dispatch:
+
+# Cancel in-progress runs for the same ref when a new push lands.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Minimum permissions needed by the deploy job. The `ci` job doesn't
+# need write access.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Verify: typecheck, lint, format, unit tests, production build, e2e smoke.
+  # Mirrors the local `npm run verify` chain, plus Playwright.
+  # ---------------------------------------------------------------------------
+  ci:
+    name: Verify (lint, test, e2e, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cached browsers only)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: E2E smoke
+        run: npm run e2e
+
+      - name: Upload Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Production build (GitHub Pages base path)
+        env:
+          VITE_BASE: /math-toolbox/
+        run: npm run build
+
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/
+
+  # ---------------------------------------------------------------------------
+  # Deploy: publishes the built site to GitHub Pages.
+  # Runs only on pushes to main, after the `ci` job is green.
+  # Requires `Settings → Pages → Source: GitHub Actions` to be enabled
+  # in the repo (manual one-time setup).
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: ci
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
